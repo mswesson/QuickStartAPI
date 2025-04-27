@@ -1,17 +1,12 @@
-from functools import lru_cache
-from mimetypes import init
 from typing import Annotated
 
 import bcrypt
+bcrypt.__about__ = bcrypt  # type: ignore
 
 from database.queries import QueriesService, QueriesServiceDep
-bcrypt.__about__ = bcrypt  # type: ignore
 from authx import AuthX
 from fastapi import Depends, HTTPException
-from sqlalchemy import Select
 from authorization.authx import AuthxDep
-from database.connections import DBSessionsDep
-from sqlalchemy.ext.asyncio import AsyncSession
 from passlib.context import CryptContext
 
 from database.models.user import User
@@ -35,7 +30,7 @@ class AuthService:
             else:
                 raise HTTPException(status_code=500, detail="Unknown server error")
     
-    async def login_user(self, creds: UserAuth):
+    async def login_user(self, creds: UserAuth) -> dict[str, str]:
         '''Проверяет правильность данных, в случае успеха выдает токен доступа'''
         user = await self.db.get_user_by_username(creds.username)
 
@@ -45,15 +40,17 @@ class AuthService:
         if not self._verify_password(creds.password, user.password):
             raise HTTPException(status_code=401, detail='Invalid password') 
         
-        token = self.auth.create_access_token(uid='12345', data={'name': creds.username})
-        refresh_token = self.auth.create_refresh_token(uid='12345', data={'name': creds.username})
+        token = self.auth.create_access_token(uid=creds.username)
+        refresh_token = self.auth.create_refresh_token(uid=creds.username)
         return {'token': token, 'refresh_token': refresh_token}
 
     def _hash_password(self, password: str) -> str:
+        '''Хеширует пароль'''
         pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         return pwd_context.hash(password)
 
     def _verify_password(self, plain_password: str, hashed_password: str) -> bool:
+        '''Проверяет совпадет ли пароль с хэшем пароля'''
         pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         return pwd_context.verify(plain_password, hashed_password)
         

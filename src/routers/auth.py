@@ -1,8 +1,8 @@
-from fastapi import HTTPException, Request, APIRouter
 from authx import RequestToken
+from fastapi import HTTPException, Request, APIRouter
+
 from authorization.authx import AuthxDep
 from schemes.auth import RefreshForm, UserAuth
-
 from services.auth import AuthServiceDep
 
 
@@ -17,8 +17,8 @@ async def registration(creds: UserAuth, auth_service: AuthServiceDep):
 
 @router.post('/login')
 async def login(creds: UserAuth, auth_service: AuthServiceDep):
+    '''Авторизация в сервисе с помощью username и password'''
     return await auth_service.login_user(creds)
-    # raise HTTPException(status_code=401, detail='Login or password not corrcted')
 
 
 @router.post('/refresh')
@@ -37,7 +37,7 @@ async def refresh(request: Request, auth: AuthxDep, refresh_data: RefreshForm):
                 verify_type=True,
             )
 
-        access_token = auth.create_access_token(uid=payload.sub, data={'name': getattr(payload, 'name')})
+        access_token = auth.create_access_token(uid=payload.sub)
         return {"access_token": access_token}
     except Exception as ex:
         raise HTTPException(status_code=401, detail=str(ex))
