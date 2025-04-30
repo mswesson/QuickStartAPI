@@ -1,3 +1,4 @@
+from email.message import EmailMessage
 from typing import Annotated
 
 import bcrypt
@@ -10,28 +11,46 @@ from authorization.authx import AuthxDep
 from passlib.context import CryptContext
 
 from database.models.user import User
-from schemes.auth import UserAuth
+from schemes.auth import SendCodeRequest
+from .email import EmailService, EmailServiceDep
+from config import settings
 
 class AuthService:
-    def __init__(self, db: QueriesService, auth: AuthX) -> None:
+    def __init__(self, db: QueriesService, auth: AuthX, email: EmailService) -> None:
         self.db = db
         self.auth = auth
+        self.email = email
         
-    async def registration_new_user(self, creds: UserAuth):
-        '''Регистрирует нового пользователя в системе'''
+    async def is_exist_user(self, username: str, email: str) -> bool:
+        '''Проверяет существует ли пользователь в системе'''
+        return await self.db.is_exist_user(username, email)
+        
+    async def send_verificatin_code(self, code: int, email_to: str) -> None:
+        '''Отправляет код верификации, для регистрации пользователя'''
+        email_message = EmailMessage()
+        email_message["From"] = settings.SMTP_USER
+        email_message["To"] = email_to
+        email_message["Subject"] = "Подтверждение регистрации"
+        email_message.set_content(f"Ваш код подтверждения: {code}")
+        await self.email.send_message(email_message)
+
+    async def add_user(self, creds: SendCodeRequest) -> dict[str, str]:
+        '''Добавляет пользователя в систему'''
         password_hashed = self._hash_password(creds.password)
-        user = User(username=creds.username, password=password_hashed)
+        user = User(username=creds.username, email=creds.email, password=password_hashed)        
+        
         try:
             await self.db.add_new_user(user)
             return {'status': 'ok'}
         except Exception as ex:
             if "UNIQUE" in str(ex):
-                raise HTTPException(status_code=409, detail="A user with that name already exists")
+                raise HTTPException(status_code=409, detail="User already exists")
             else:
                 raise HTTPException(status_code=500, detail="Unknown server error")
     
-    async def login_user(self, creds: UserAuth) -> dict[str, str]:
+    async def login_user(self, creds: SendCodeRequest) -> dict[str, str]:
         '''Проверяет правильность данных, в случае успеха выдает токен доступа'''
+        # TODO: Переделать на почту
         user = await self.db.get_user_by_username(creds.username)
 
         if not user:
@@ -55,7 +74,7 @@ class AuthService:
         return pwd_context.verify(plain_password, hashed_password)
         
 
-def get_auth_service(db: QueriesServiceDep, auth: AuthxDep) -> AuthService:
-    return AuthService(db=db, auth=auth)
+def get_auth_service(db: QueriesServiceDep, auth: AuthxDep, email: EmailServiceDep) -> AuthService:
+    return AuthService(db=db, auth=auth, email=email)
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
