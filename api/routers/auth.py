@@ -1,7 +1,9 @@
+import json
 from random import randint
 from authx import RequestToken
 from fastapi import HTTPException, Request, APIRouter
 
+from redis_client.redis import RedisDep
 from authorization.authx import AuthxDep
 from schemes.auth import RefreshForm, SendCodeRequest, VerifyCodeRequest
 from services.auth import AuthServiceDep
@@ -10,26 +12,23 @@ from services.auth import AuthServiceDep
 router = APIRouter(prefix='/auth')
 
 
-redis = {}
-
-
 @router.post('/send-code')
-async def send_code(creds: SendCodeRequest, auth_service: AuthServiceDep):
+async def send_code(creds: SendCodeRequest, auth_service: AuthServiceDep, redis: RedisDep):
     '''Отправляет код верификации пользователю'''
     if await auth_service.is_exist_user(username=creds.username, email=creds.email):
         raise HTTPException(status_code=409, detail="User already exists")
     
     secret_code = randint(1000, 9999)
     await auth_service.send_verificatin_code(secret_code, creds.email)
-    redis[creds.email] = {'code': secret_code, **creds.model_dump()}
-    print(redis)
+    await redis.set(f'verify_code_{creds.email}', json.dumps({'code': secret_code, **creds.model_dump()}), ex=300)
     return {'result': 'ok'}
 
 
 @router.post('/verify-code')
-async def verify_code(verify: VerifyCodeRequest, auth_service: AuthServiceDep):
+async def verify_code(verify: VerifyCodeRequest, auth_service: AuthServiceDep, redis: RedisDep):
     '''Проверяет код верификации пользователя'''
-    if (creds := redis.get(verify.email)):
+    if (creds := await redis.get(f'verify_code_{verify.email}')):
+        creds = json.loads(creds)
         if creds['code'] == verify.code:
             await auth_service.add_user(SendCodeRequest(**creds))
             return {'result': 'ok'}
