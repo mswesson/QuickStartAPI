@@ -18,3 +18,15 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+
+  celery:
+    build:
+      context: api
+      dockerfile: Dockerfile
+    container_name: celery
+    command: celery -A celery_client.tasks worker --loglevel=info
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - api

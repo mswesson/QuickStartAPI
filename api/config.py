@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     SMTP_PORT: int
     SMTP_USER: str
     SMTP_PASSWORD: str
+    
+    CELERY_BROKER_URL: str
 
 
 settings = Settings()  # type: ignore

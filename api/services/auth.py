@@ -1,4 +1,3 @@
-from email.message import EmailMessage
 import json
 from random import randint
 from typing import Annotated
@@ -20,7 +19,6 @@ from passlib.context import CryptContext
 from database.models.user import User
 from schemes.auth import RefreshForm, SendCodeRequest, VerifyCodeRequest
 from .email import EmailService, EmailServiceDep
-from config import settings
 
 
 class AuthService:
@@ -116,9 +114,11 @@ class AuthService:
             )
 
         secret_code = self._get_random_code()
-        message = await self._create_verify_message(secret_code, creds.email)
-        # TODO: Сделать очередь с помощью Celery и Redis
-        await self.email.send_message(message)
+        await self.email.send_message(
+            subject='Подтверждение регистрации',
+            body=f'Код подтверждения: {secret_code}',
+            to_email=creds.email,
+        )
         await self.redis.set(
             f'verify_code_{creds.email}',
             json.dumps({'code': secret_code, **creds.model_dump()}),
@@ -139,15 +139,6 @@ class AuthService:
             status_code=409,
             content=ApiResponse(result='error', message='Invalid code').model_dump(),
         )
-
-    async def _create_verify_message(self, code: int, email_to: str) -> EmailMessage:
-        '''Отправляет код верификации, для регистрации пользователя'''
-        email_message = EmailMessage()
-        email_message["From"] = settings.SMTP_USER
-        email_message["To"] = email_to
-        email_message["Subject"] = "Подтверждение регистрации"
-        email_message.set_content(f"Ваш код подтверждения: {code}")
-        return email_message
 
     def _get_random_code(self) -> int:
         '''Выдает случайны код'''
